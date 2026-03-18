@@ -1,6 +1,10 @@
 {
   "rewrites": [
     {
+      "source": "/api/:path*",
+      "destination": "/api/:path*"
+    },
+    {
       "source": "/(.*)",
       "has": [{ "type": "host", "value": "fall01.krimi.shop" }],
       "destination": "/faelle/fall01/$1"

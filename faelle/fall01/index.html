@@ -1,58 +1,463 @@
 <!DOCTYPE html>
 <html lang="de">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Fall 01 — Krimishop</title>
-    <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-
-        body {
-            font-family: Georgia, 'Times New Roman', serif;
-            background-color: #1a1a2e;
-            color: #e0e0e0;
-            min-height: 100vh;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-        }
-
-        .container {
-            text-align: center;
-            padding: 2rem;
-            max-width: 600px;
-        }
-
-        h1 {
-            font-size: 2.5rem;
-            color: #c62828;
-            margin-bottom: 0.5rem;
-            letter-spacing: 0.05em;
-        }
-
-        .subtitle {
-            font-size: 1.1rem;
-            color: #888;
-            margin-bottom: 2rem;
-        }
-
-        .info {
-            font-size: 1rem;
-            line-height: 1.8;
-            color: #bbb;
-        }
-    </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>krimi.shop – Fall 01: Der leere Sockel</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Oswald:wght@300;400;600;700&family=Source+Serif+4:ital,wght@0,300;0,400;0,600;1,300;1,400&family=JetBrains+Mono:wght@400;600&display=swap');
+:root{--bg:#09090B;--surface:#111113;--card:#17171A;--border:#252530;--red:#C8102E;--gold:#C9A84C;--text:#E5E3DC;--muted:#7A7A88;--faint:#303040;}
+*{box-sizing:border-box;margin:0;padding:0;}
+body{background:var(--bg);color:var(--text);font-family:'Source Serif 4',Georgia,serif;min-height:100vh;overflow-x:hidden;}
+/* LOGIN */
+#login-screen{position:fixed;inset:0;background:var(--bg);display:flex;align-items:center;justify-content:center;z-index:1000;}
+.login-box{background:var(--surface);border:1px solid var(--border);padding:3rem 2.5rem;width:min(420px,90vw);position:relative;text-align:center;}
+.login-box::before{content:'';position:absolute;top:0;left:0;right:0;height:3px;background:linear-gradient(90deg,var(--red),var(--gold),var(--red));}
+.login-logo{font-family:'Oswald',sans-serif;font-size:.9rem;letter-spacing:.4em;color:var(--muted);text-transform:uppercase;margin-bottom:2rem;}
+.login-title{font-family:'Oswald',sans-serif;font-size:2.4rem;font-weight:700;margin-bottom:.3rem;}
+.login-subtitle{font-size:.85rem;color:var(--gold);font-style:italic;margin-bottom:2.5rem;}
+.login-box label{display:block;font-family:'Oswald',sans-serif;font-size:.7rem;letter-spacing:.25em;color:var(--muted);text-transform:uppercase;margin-bottom:.5rem;text-align:left;}
+.login-box input{width:100%;background:var(--card);border:1px solid var(--border);color:var(--text);font-family:'JetBrains Mono',monospace;font-size:1.5rem;padding:.8rem 1rem;letter-spacing:.4em;text-transform:uppercase;text-align:center;outline:none;transition:border-color .2s;}
+.login-box input:focus{border-color:var(--gold);}
+.login-box input.shake{animation:shake .3s;}
+@keyframes shake{0%,100%{transform:translateX(0)}25%{transform:translateX(-5px)}75%{transform:translateX(5px)}}
+.login-btn{margin-top:1.5rem;width:100%;padding:.9rem;background:var(--red);color:white;border:none;cursor:pointer;font-family:'Oswald',sans-serif;font-size:.95rem;letter-spacing:.2em;text-transform:uppercase;transition:background .2s;}
+.login-btn:hover{background:#a50d26;}
+.error-msg{color:var(--red);font-size:.78rem;margin-top:.5rem;min-height:1rem;font-family:'Oswald',sans-serif;}
+.login-hint{margin-top:1.2rem;font-size:.72rem;color:var(--faint);font-style:italic;}
+/* APP */
+#app{display:none;}
+.topbar{background:var(--surface);border-bottom:1px solid var(--border);height:58px;display:flex;align-items:center;justify-content:space-between;padding:0 2rem;position:sticky;top:0;z-index:100;}
+.topbar-logo{font-family:'Oswald',sans-serif;font-size:.95rem;letter-spacing:.35em;color:var(--gold);text-transform:uppercase;}
+nav{display:flex;gap:.2rem;}
+nav button{background:none;border:none;color:var(--muted);cursor:pointer;font-family:'Oswald',sans-serif;font-size:.75rem;letter-spacing:.12em;text-transform:uppercase;padding:.4rem .85rem;border-radius:2px;transition:all .15s;}
+nav button:hover,nav button.active{background:var(--faint);color:var(--text);}
+nav button.active{color:var(--gold);}
+.topbar-ref{font-family:'JetBrains Mono',monospace;font-size:.72rem;color:var(--muted);}
+/* HERO */
+.hero{padding:4rem 2rem 3rem;text-align:center;position:relative;overflow:hidden;background:linear-gradient(180deg,#0D0D10 0%,var(--bg) 100%);}
+.hero::before{content:'DER LEERE SOCKEL';position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);font-family:'Oswald',sans-serif;font-size:14vw;font-weight:700;color:rgba(255,255,255,.012);pointer-events:none;white-space:nowrap;}
+.eyebrow{font-family:'Oswald',sans-serif;font-size:.68rem;letter-spacing:.4em;color:var(--red);text-transform:uppercase;margin-bottom:.9rem;}
+.hero h1{font-family:'Oswald',sans-serif;font-size:clamp(2.8rem,6vw,5rem);font-weight:700;letter-spacing:.02em;line-height:1.05;margin-bottom:.7rem;}
+.hero h1 em{color:var(--gold);font-style:normal;}
+.hero-sub{font-size:.95rem;color:var(--muted);font-style:italic;max-width:480px;margin:0 auto 2rem;}
+.pills{display:flex;gap:.7rem;justify-content:center;flex-wrap:wrap;}
+.pill{display:flex;align-items:center;gap:.4rem;background:var(--card);border:1px solid var(--border);padding:.35rem .75rem;font-family:'JetBrains Mono',monospace;font-size:.68rem;color:var(--muted);}
+.dot{width:6px;height:6px;border-radius:50%;}
+.dr{background:var(--red);box-shadow:0 0 6px var(--red);}
+.dg{background:#C9A84C;}.de{background:#38A169;}
+/* SECTIONS */
+.sec{display:none;padding:2rem;max-width:1200px;margin:0 auto;}
+.sec.on{display:block;}
+.sec-label{font-family:'Oswald',sans-serif;font-size:.68rem;letter-spacing:.3em;color:var(--red);text-transform:uppercase;margin-bottom:.4rem;}
+.sec-title{font-family:'Oswald',sans-serif;font-size:1.9rem;font-weight:600;margin-bottom:1.8rem;}
+.notice{background:var(--card);border:1px solid var(--border);border-left:3px solid var(--gold);padding:1rem 1.2rem;font-size:.88rem;color:var(--muted);font-style:italic;margin-bottom:1.8rem;}
+/* TIMELINE */
+.tline{position:relative;padding-left:1.8rem;}
+.tline::before{content:'';position:absolute;left:.55rem;top:0;bottom:0;width:2px;background:var(--border);}
+.tevent{position:relative;padding:0 0 1.4rem 1.2rem;margin-bottom:.2rem;}
+.tevent .dot2{position:absolute;left:-1.3rem;top:.25rem;width:.7rem;height:.7rem;border-radius:50%;}
+.ttime{font-family:'JetBrains Mono',monospace;font-size:.68rem;margin-bottom:.2rem;}
+.ttext{font-size:.86rem;color:var(--muted);line-height:1.6;}
+/* EVIDENCE */
+.egrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(270px,1fr));gap:1.4rem;}
+.ecard{background:var(--card);border:1px solid var(--border);padding:1.4rem;cursor:pointer;transition:all .2s;}
+.ecard:hover{border-color:var(--gold);transform:translateY(-2px);box-shadow:0 8px 28px rgba(0,0,0,.4);}
+.eref{font-family:'JetBrains Mono',monospace;font-size:.63rem;color:var(--red);margin-bottom:.7rem;letter-spacing:.1em;}
+.etitle{font-family:'Oswald',sans-serif;font-size:1.05rem;font-weight:600;margin-bottom:.45rem;}
+.edesc{font-size:.83rem;color:var(--muted);line-height:1.6;}
+.etag{display:inline-block;margin-top:.9rem;padding:.18rem .55rem;font-family:'Oswald',sans-serif;font-size:.62rem;letter-spacing:.14em;text-transform:uppercase;border:1px solid;}
+.tp{color:var(--gold);border-color:var(--gold);}
+.td{color:#4FC3F7;border-color:#4FC3F7;}
+/* SUSPECTS */
+.sgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:1.4rem;}
+.scard{background:var(--card);border:1px solid var(--border);overflow:hidden;cursor:pointer;transition:border-color .2s;}
+.scard:hover{border-color:var(--red);}
+.sphoto{width:100%;aspect-ratio:3/2;display:flex;align-items:center;justify-content:center;}
+.sini{font-family:'Oswald',sans-serif;font-size:2.8rem;font-weight:700;opacity:.12;}
+.sbody{padding:1.15rem;}
+.sname{font-family:'Oswald',sans-serif;font-size:1.05rem;font-weight:600;margin-bottom:.15rem;}
+.srole{font-size:.78rem;color:var(--gold);font-style:italic;margin-bottom:.7rem;}
+.sfact{font-size:.78rem;color:var(--muted);line-height:1.6;margin-bottom:.3rem;}
+.soq{font-family:'Oswald',sans-serif;font-size:.62rem;letter-spacing:.14em;color:var(--gold);text-transform:uppercase;margin-top:.7rem;margin-bottom:.3rem;}
+.soqt{font-size:.78rem;color:var(--muted);font-style:italic;}
+/* CHAT */
+.chatgrid{display:grid;grid-template-columns:230px 1fr;gap:1.4rem;height:calc(100vh - 310px);min-height:480px;}
+.chatside{background:var(--card);border:1px solid var(--border);overflow-y:auto;}
+.cstitle{padding:.9rem 1.2rem;font-family:'Oswald',sans-serif;font-size:.68rem;letter-spacing:.2em;color:var(--muted);text-transform:uppercase;border-bottom:1px solid var(--border);}
+.sbtn{width:100%;padding:.9rem 1.2rem;text-align:left;background:none;border:none;border-bottom:1px solid var(--border);cursor:pointer;transition:background .15s;color:var(--text);}
+.sbtn:hover{background:var(--faint);}
+.sbtn.on{background:var(--faint);border-left:3px solid var(--red);}
+.sbtn-name{font-family:'Oswald',sans-serif;font-size:.9rem;font-weight:600;}
+.sbtn-role{font-size:.72rem;color:var(--muted);margin-top:.12rem;}
+.chatmain{background:var(--card);border:1px solid var(--border);display:flex;flex-direction:column;}
+.chatheader{padding:.9rem 1.4rem;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:.9rem;}
+.cavatar{width:38px;height:38px;border-radius:50%;background:var(--red);display:flex;align-items:center;justify-content:center;font-family:'Oswald',sans-serif;font-weight:700;color:white;flex-shrink:0;font-size:.9rem;}
+.cname{font-family:'Oswald',sans-serif;font-size:.95rem;font-weight:600;}
+.cstatus{font-size:.72rem;color:#38A169;}
+.chatmsgs{flex:1;overflow-y:auto;padding:1.4rem;display:flex;flex-direction:column;gap:.9rem;}
+.msg{max-width:74%;}
+.msg.user{align-self:flex-end;}
+.msg.ai{align-self:flex-start;}
+.bubble{padding:.7rem .95rem;font-size:.88rem;line-height:1.6;}
+.msg.user .bubble{background:var(--red);color:white;}
+.msg.ai .bubble{background:var(--surface);color:var(--text);border:1px solid var(--border);}
+.mtime{font-family:'JetBrains Mono',monospace;font-size:.62rem;color:var(--muted);margin-top:.25rem;}
+.msg.user .mtime{text-align:right;}
+.typing{display:flex;gap:4px;padding:.7rem .95rem;}
+.typing span{width:6px;height:6px;border-radius:50%;background:var(--muted);animation:b 1.4s infinite;}
+.typing span:nth-child(2){animation-delay:.2s;}.typing span:nth-child(3){animation-delay:.4s;}
+@keyframes b{0%,60%,100%{transform:translateY(0)}30%{transform:translateY(-5px)}}
+.chatinput{padding:.9rem 1.4rem;border-top:1px solid var(--border);display:flex;gap:.7rem;}
+.cinput{flex:1;background:var(--surface);border:1px solid var(--border);color:var(--text);padding:.7rem .95rem;font-family:'Source Serif 4',serif;font-size:.88rem;outline:none;resize:none;height:42px;transition:border-color .2s;}
+.cinput:focus{border-color:var(--gold);}
+.csend{background:var(--red);border:none;color:white;padding:.7rem 1.1rem;cursor:pointer;font-family:'Oswald',sans-serif;font-size:.75rem;letter-spacing:.1em;text-transform:uppercase;transition:background .2s;}
+.csend:hover{background:#a50d26;}
+/* MODAL */
+.moverlay{position:fixed;inset:0;background:rgba(0,0,0,.82);z-index:500;display:none;align-items:center;justify-content:center;padding:1rem;}
+.moverlay.on{display:flex;}
+.modal{background:var(--card);border:1px solid var(--border);max-width:660px;width:100%;max-height:85vh;overflow-y:auto;position:relative;}
+.modal::before{content:'';position:absolute;top:0;left:0;right:0;height:3px;background:linear-gradient(90deg,var(--red),var(--gold));}
+.mclose{position:absolute;top:.9rem;right:.9rem;background:none;border:none;color:var(--muted);cursor:pointer;font-size:1.2rem;}
+.mclose:hover{color:var(--text);}
+.mcontent{padding:1.8rem;}
+.wave2{background:linear-gradient(135deg,#140800,#2A1200);border:1px solid var(--gold);padding:1.1rem 1.4rem;margin-bottom:1.8rem;display:flex;gap:.9rem;align-items:flex-start;}
+/* MOBILE */
+@media(max-width:700px){
+  .topbar{flex-wrap:wrap;height:auto;padding:.7rem 1rem;gap:.5rem;}
+  .topbar-ref{display:none;}
+  nav{width:100%;justify-content:space-between;}
+  nav button{font-size:.65rem;padding:.35rem .5rem;}
+  .hero h1{font-size:2rem;}
+  .chatgrid{grid-template-columns:1fr;height:auto;min-height:auto;}
+  .chatside{display:flex;overflow-x:auto;border:1px solid var(--border);}
+  .cstitle{display:none;}
+  .sbtn{white-space:nowrap;border-bottom:none;border-right:1px solid var(--border);}
+  .chatmain{min-height:60vh;}
+  .sec{padding:1.2rem;}
+}
+</style>
 </head>
 <body>
-    <div class="container">
-        <h1>Fall 01</h1>
-        <p class="subtitle">Murder Mystery Box</p>
-        <p class="info">Willkommen, Ermittler. Weitere Hinweise folgen.</p>
+
+<div id="login-screen">
+  <div class="login-box">
+    <div class="login-logo">krimi.shop</div>
+    <div class="login-title">FALL&nbsp;01</div>
+    <div class="login-subtitle">Der leere Sockel — Bern, Oktober 2024</div>
+    <label for="ci">Zugangscode (rotes Kärtchen in der Box)</label>
+    <input type="text" id="ci" maxlength="6" placeholder="_ _ _ _ _ _" autocomplete="off" spellcheck="false">
+    <div class="error-msg" id="em"></div>
+    <button class="login-btn" onclick="chk()">Zugang öffnen</button>
+    <p class="login-hint">Den Code findest du auf dem roten Kärtchen in deiner Box.</p>
+  </div>
+</div>
+
+<div id="app">
+  <div class="topbar">
+    <span class="topbar-logo">krimi.shop</span>
+    <nav>
+      <button class="active" onclick="show('ov',this)">Übersicht</button>
+      <button onclick="show('ev',this)">Beweise</button>
+      <button onclick="show('sv',this)">Verdächtige</button>
+      <button onclick="show('ch',this)">Verhör-Chat</button>
+    </nav>
+    <span class="topbar-ref">KR-2024-1847</span>
+  </div>
+
+  <div class="hero">
+    <div class="eyebrow">Kantonspolizei Bern · Kriminalfall · Oktober 2024</div>
+    <h1>Der leere <em>Sockel</em></h1>
+    <p class="hero-sub">Thomas Keller, 52, Antiquitätenhändler, wird am Samstagmorgen tot in seinem Geschäft an der Kramgasse gefunden. Keine Einbruchsspuren. Die Eingangstür war nicht abgeschlossen.</p>
+    <div class="pills">
+      <div class="pill"><span class="dot dr"></span>Fall offen</div>
+      <div class="pill"><span class="dot dg"></span>4 Verdächtige</div>
+      <div class="pill"><span class="dot de"></span>Tatzeit: 20:20–20:50</div>
     </div>
+  </div>
+
+  <div class="sec on" id="sec-ov">
+    <div class="sec-label">Fallübersicht</div>
+    <div class="sec-title">KR-2024-1847 — Gesicherte Fakten</div>
+    <div class="notice">Kombiniert die digitalen Daten dieser Seite mit den physischen Beweisen in eurer Box. Kein einzelnes Dokument löst den Fall.</div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(270px,1fr));gap:1.4rem;margin-bottom:2rem;">
+      <div style="background:var(--card);border:1px solid var(--border);padding:1.4rem;">
+        <div style="font-family:'Oswald',sans-serif;font-size:.68rem;letter-spacing:.2em;color:var(--red);text-transform:uppercase;margin-bottom:.7rem;">Opfer</div>
+        <div style="font-family:'Oswald',sans-serif;font-size:1.25rem;font-weight:600;margin-bottom:.3rem;">Thomas Keller, 52</div>
+        <div style="font-size:.83rem;color:var(--muted);line-height:1.7;">Inhaber Keller &amp; Co.<br>Kramgasse 47, 3011 Bern<br>geb. 12.03.1972</div>
+      </div>
+      <div style="background:var(--card);border:1px solid var(--border);padding:1.4rem;">
+        <div style="font-family:'Oswald',sans-serif;font-size:.68rem;letter-spacing:.2em;color:var(--red);text-transform:uppercase;margin-bottom:.7rem;">Tatzeit (IRM)</div>
+        <div style="font-family:'Oswald',sans-serif;font-size:1.25rem;font-weight:600;margin-bottom:.3rem;">20:20 – 20:50 Uhr</div>
+        <div style="font-size:.83rem;color:var(--muted);line-height:1.7;">Fr 18.10.2024<br>Genauigkeit: ±15 Minuten<br>IRM Bern, Ref. AU-2024-0892</div>
+      </div>
+      <div style="background:var(--card);border:1px solid var(--border);padding:1.4rem;">
+        <div style="font-family:'Oswald',sans-serif;font-size:.68rem;letter-spacing:.2em;color:var(--red);text-transform:uppercase;margin-bottom:.7rem;">Tatwaffe</div>
+        <div style="font-family:'Oswald',sans-serif;font-size:1.25rem;font-weight:600;margin-bottom:.3rem;">Unbekannt (fehlt)</div>
+        <div style="font-size:.83rem;color:var(--muted);line-height:1.7;">Stumpf, rund, Ø 5–7 cm, >1,5 kg<br>Staubabdruck Ø 11–12 cm auf Sockel<br>Gegenstand nicht aufgefunden</div>
+      </div>
+    </div>
+    <div class="sec-label" style="margin-bottom:.8rem;">Zeitstrahl</div>
+    <div class="tline" id="tl"></div>
+  </div>
+
+  <div class="sec" id="sec-ev">
+    <div class="sec-label">Beweismittel</div>
+    <div class="sec-title">Sichergestellte Dokumente</div>
+    <div class="wave2">
+      <div style="font-size:1.3rem;">📦</div>
+      <div style="font-size:.88rem;color:var(--muted);"><strong style="color:var(--gold);">Nachlieferungsumschlag</strong> — Nach eurer ersten Verdächtigung dürft ihr den roten Umschlag öffnen. Erst dann könnt ihr die Beweise final gewichten.</div>
+    </div>
+    <div class="egrid" id="eg"></div>
+  </div>
+
+  <div class="sec" id="sec-sv">
+    <div class="sec-label">Verdächtige</div>
+    <div class="sec-title">Vier Personen im Fokus</div>
+    <div class="notice">Diese Karten zeigen gesicherte Fakten aus Verhörprotokollen und Ermittlungsakten — keine Bewertungen, keine Alibis.</div>
+    <div class="sgrid" id="sg"></div>
+  </div>
+
+  <div class="sec" id="sec-ch">
+    <div class="sec-label">Interaktives Verhör</div>
+    <div class="sec-title">Befragt die Verdächtigen</div>
+    <div class="notice">Die Verdächtigen antworten gemäss ihren bekannten Aussagen. Stellt gezielte Fragen — achtet auf Widersprüche.</div>
+    <div class="chatgrid">
+      <div class="chatside">
+        <div class="cstitle">Verdächtige</div>
+        <div id="sbs"></div>
+      </div>
+      <div class="chatmain">
+        <div class="chatheader">
+          <div class="cavatar" id="cav">?</div>
+          <div><div class="cname" id="cn">Wähle einen Verdächtigen</div><div class="cstatus">● Bereit</div></div>
+        </div>
+        <div class="chatmsgs" id="cm"><div style="text-align:center;color:var(--muted);font-style:italic;font-size:.88rem;padding:2rem;">Wähle links einen Verdächtigen.</div></div>
+        <div class="chatinput">
+          <textarea class="cinput" id="inp" rows="1" placeholder="Deine Frage…" onkeydown="ck(event)"></textarea>
+          <button class="csend" onclick="send()">Fragen</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="moverlay" id="mo">
+  <div class="modal">
+    <button class="mclose" onclick="cm2()">✕</button>
+    <div class="mcontent" id="mc"></div>
+  </div>
+</div>
+
+<script>
+// Data: strictly neutral, no interpretations
+const TL=[
+  {time:"Fr 18.10., ~15:30",text:"Roland Huber erscheint im Laden. Konfrontation wegen einer Empire-Uhr (CHF 15'000, behauptete Fälschung).",col:"var(--border)"},
+  {time:"Fr 18.10., ~16:30",text:"Roland Huber verlässt den Laden. Kurz danach: Marco Ferretti auf der Kramgasse gesichtet (Aussage R. Huber, unaufgefordert).",col:"var(--gold)"},
+  {time:"Fr 18.10., 18:15",text:"Voicemail auf Thomas' Mobiltelefon hinterlassen (Absenderin: Sandra Keller). Inhalt: Scheidungsstreit, Geldnot.",col:"var(--gold)"},
+  {time:"Fr 18.10., 19:47",text:"WhatsApp-Nachricht Thomas an Marco Ferretti: 'Konto 5000. Heute 21 Uhr im Laden. Alles liegt bereit.'",col:"var(--gold)"},
+  {time:"Fr 18.10., 20:20–20:50",text:"Tatzeit laut IRM Bern (±15 Min.). Thomas Keller stirbt durch Schädel-Hirn-Trauma.",col:"var(--red)"},
+  {time:"Sa 19.10., 08:45",text:"Lena Bauer findet Thomas. Tür nicht abgeschlossen. Sofortiger Notruf.",col:"var(--border)"},
+];
+
+const EV=[
+  {ref:"SP-E",title:"Handschriftliche Notiz",desc:"Schreibblock Büro des Opfers. Enthält Kontonummer, einen Firmennamen und eine Fristnotiz. Original in eurer Box.",tags:["physical"]},
+  {ref:"SP-F",title:"Buchhaltungsauszug",desc:"Konto 5000, externe Beratungshonorare, Jan 2023–Okt 2024. Buchführungsverantwortung: M. Ferretti. Auszug in eurer Box.",tags:["physical","digital"]},
+  {ref:"SP-B / SP-C",title:"Zwei Whisky-Gläser",desc:"Büro des Opfers. Ein Glas halb gefüllt, eines geleert. Fingerabdruckanalyse: Nachlieferungsumschlag.",tags:["physical"]},
+  {ref:"SP-D",title:"Mobiltelefon (Samsung Galaxy S23)",desc:"Schreibtisch Büro. WhatsApp-Verlauf extrahiert (Auszug in eurer Box).",tags:["physical","digital"]},
+  {ref:"SP-G",title:"Staubabdruck auf Ausstellungssockel",desc:"Kreisrunder Abdruck, Ø ~11–12 cm, Verkaufsraum nahe Theke. Gegenstand fehlt. Abgleich mit Inventarblatt in eurer Box.",tags:["physical"]},
+  {ref:"SP-H",title:"Duftstoffprobe (Jackenrevers)",desc:"Herrenparfüm, fremd. Chemische Analyse: Nachlieferungsumschlag.",tags:["physical"]},
+  {ref:"D4",title:"Inventarblatt 'Berner Bär'",desc:"Rotguss-Bronze, 2,28 kg, Sockel Ø 11,5 cm. In Kommission bei Keller & Co. Vollständiges Blatt in eurer Box.",tags:["physical"]},
+  {ref:"AU-0892",title:"Autopsieprotokoll IRM Bern",desc:"Todeszeitpunkt 20:20–20:50 Uhr. Wundprofil rund, Ø 5–7 cm, >1,5 kg. Metallspurenanalyse: Nachlieferungsumschlag.",tags:["physical"]},
+  {ref:"CCTV",title:"CCTV Kramgasse – zwei Zeitstempel",desc:"20:12 Uhr und 20:47 Uhr. Fahrzeug auf Kramgasse. Abruf auf digitaler Fallseite.",tags:["digital"]},
+  {ref:"D6",title:"Voicemail-Transkript Sandra",desc:"Hinterlassen 18:15 Uhr. Wütend, emotional, direkte Erwähnung der finanziellen Notlage. Transkript in eurer Box.",tags:["physical"]},
+];
+
+// Neutral: only facts, no alibi judgments
+const SV=[
+  {ini:"SK",name:"Sandra Keller",role:"Ehefrau (getrennt lebend)",age:"48 J.",col:"#8B4513",
+   facts:["Seit März 2024 getrennt. Scheidungsverfahren läuft.","Hinterliess wütende Voicemail um 18:15 Uhr.","Lebensversicherung auf Thomas: CHF 500'000.","Gibt enge Freundschaft zur Yoga-Kursleiterin zu."],
+   oq:"Erkundigte sie sich am Donnerstag vor dem Mord bei der Versicherung?"},
+  {ini:"MF",name:"Marco Ferretti",role:"Geschäftspartner (40%, Buchführung)",age:"45 J.",col:"#C8102E",
+   facts:["Zuständig für alle Buchhaltung seit 2019.","Behauptet: Abfahrt ~20:10 Uhr, Ankunft Thun ~20:30 Uhr.","Gab WhatsApp-Kontakt erst nach Konfrontation zu.","Wohnt Elfenaustrasse 12 – Abfahrtspunkt Thun-Route."],
+   oq:"Wie lange dauert die Fahrt von der Kramgasse nach Thun?"},
+  {ini:"LB",name:"Lena Bauer",role:"Assistentin (entlassen 01.10.)",age:"29 J.",col:"#2C6E9A",
+   facts:["Entlassen nach Ende einer Affäre mit Thomas.","Hatte noch Schlüssel zum Laden.","Behauptet: ab ~19 Uhr im Restaurant. Quittung vorhanden.","Gibt zweimalige Anwesenheit in Kramgasse-Nähe zu."],
+   oq:"War sie vor dem Restaurant in der Altstadt?"},
+  {ini:"RH",name:"Roland Huber",role:"Stammkunde / Sammler",age:"61 J.",col:"#4A7C59",
+   facts:["Streit mit Thomas wegen gefälschter Antiquität (CHF 15'000).","Erwähnte unaufgefordert: sah Marco Ferretti ~16:30 Uhr.","Behauptet: ab 17:30 Uhr zu Hause in Muri.","Sagt im Verhör: 'Ich trage seit Jahren Davidoff.'"],
+   oq:"Stimmt sein Heim-Alibi? Was trägt er?"},
+];
+
+// Personas are stored server-side in /api/chat.js
+
+let cur=null; let hist={};
+
+function initTL(){
+  document.getElementById('tl').innerHTML=TL.map(e=>`
+    <div class="tevent">
+      <div class="dot2" style="background:${e.col};"></div>
+      <div class="ttime" style="color:${e.col};">${e.time}</div>
+      <div class="ttext">${e.text}</div>
+    </div>`).join('');
+}
+
+function initEV(){
+  document.getElementById('eg').innerHTML=EV.map((e,i)=>`
+    <div class="ecard" onclick="showE(${i})">
+      <div class="eref">${e.ref}</div>
+      <div class="etitle">${e.title}</div>
+      <div class="edesc">${e.desc}</div>
+      <div style="margin-top:.8rem;display:flex;gap:.4rem;flex-wrap:wrap;">
+        ${e.tags.map(tg=>`<span class="etag t${tg[0]}">${tg}</span>`).join('')}
+      </div>
+    </div>`).join('');
+}
+
+function initSV(){
+  document.getElementById('sg').innerHTML=SV.map((s,i)=>`
+    <div class="scard" onclick="showS(${i})">
+      <div class="sphoto" style="background:${s.col}15;">
+        <div class="sini" style="color:${s.col};">${s.ini}</div>
+      </div>
+      <div class="sbody">
+        <div class="sname">${s.name}</div>
+        <div class="srole">${s.role} · ${s.age}</div>
+        ${s.facts.map(f=>`<div class="sfact">— ${f}</div>`).join('')}
+        <div class="soq">Offene Frage</div>
+        <div class="soqt">${s.oq}</div>
+      </div>
+    </div>`).join('');
+}
+
+function initSBS(){
+  document.getElementById('sbs').innerHTML=SV.map((s,i)=>`
+    <button class="sbtn" onclick="selS(${i})" id="sb${i}">
+      <div class="sbtn-name">${s.name}</div>
+      <div class="sbtn-role">${s.role}</div>
+    </button>`).join('');
+}
+
+function showE(i){
+  const e=EV[i];
+  document.getElementById('mc').innerHTML=`
+    <div style="font-family:'JetBrains Mono',monospace;font-size:.68rem;color:var(--red);margin-bottom:.5rem;">${e.ref}</div>
+    <h2 style="font-family:'Oswald',sans-serif;font-size:1.5rem;margin-bottom:.9rem;">${e.title}</h2>
+    <p style="color:var(--muted);line-height:1.7;">${e.desc}</p>
+    <div style="margin-top:1.4rem;background:var(--surface);border:1px solid var(--border);padding:.9rem;font-size:.83rem;color:var(--muted);">
+      <strong style="color:var(--text);font-family:'Oswald',sans-serif;letter-spacing:.1em;">TIPP:</strong> Vergleicht mit anderen Dokumenten. Was verbindet sich?
+    </div>`;
+  document.getElementById('mo').classList.add('on');
+}
+
+function showS(i){
+  const s=SV[i];
+  document.getElementById('mc').innerHTML=`
+    <div style="display:flex;align-items:center;gap:.9rem;margin-bottom:1.4rem;">
+      <div style="width:52px;height:52px;border-radius:50%;background:${s.col};display:flex;align-items:center;justify-content:center;font-family:'Oswald',sans-serif;font-weight:700;font-size:1.3rem;color:white;flex-shrink:0;">${s.ini}</div>
+      <div>
+        <h2 style="font-family:'Oswald',sans-serif;font-size:1.4rem;">${s.name}</h2>
+        <div style="color:var(--gold);font-style:italic;font-size:.85rem;">${s.role}</div>
+      </div>
+    </div>
+    <div style="background:var(--surface);border:1px solid var(--border);padding:.95rem;margin-bottom:.9rem;">
+      <div style="font-family:'Oswald',sans-serif;font-size:.63rem;letter-spacing:.2em;color:var(--red);text-transform:uppercase;margin-bottom:.5rem;">Gesicherte Fakten</div>
+      ${s.facts.map(f=>`<p style="font-size:.85rem;color:var(--muted);line-height:1.7;margin-bottom:.3rem;">— ${f}</p>`).join('')}
+    </div>
+    <div style="background:var(--surface);border:1px solid var(--border);padding:.95rem;border-left:3px solid var(--gold);">
+      <div style="font-family:'Oswald',sans-serif;font-size:.63rem;letter-spacing:.2em;color:var(--gold);text-transform:uppercase;margin-bottom:.4rem;">Offene Frage</div>
+      <p style="font-size:.85rem;color:var(--muted);font-style:italic;line-height:1.7;">${s.oq}</p>
+    </div>`;
+  document.getElementById('mo').classList.add('on');
+}
+
+function cm2(){document.getElementById('mo').classList.remove('on');}
+document.getElementById('mo').addEventListener('click',e=>{if(e.target.id==='mo')cm2();});
+
+function selS(i){
+  document.querySelectorAll('.sbtn').forEach(b=>b.classList.remove('on'));
+  document.getElementById('sb'+i).classList.add('on');
+  cur=SV[i];
+  document.getElementById('cav').textContent=cur.ini;
+  document.getElementById('cav').style.background=cur.col;
+  document.getElementById('cn').textContent=cur.name;
+  if(!hist[cur.name]) hist[cur.name]=[];
+  renderMsgs();
+  document.getElementById('inp').placeholder=`Frage an ${cur.name.split(' ')[0]}…`;
+  document.getElementById('inp').focus();
+}
+
+function esc(s){const d=document.createElement('div');d.textContent=s;return d.innerHTML;}
+
+function renderMsgs(){
+  if(!cur) return;
+  const msgs=hist[cur.name]||[];
+  const ct=document.getElementById('cm');
+  if(!msgs.length){ct.innerHTML=`<div style="text-align:center;color:var(--muted);font-style:italic;font-size:.86rem;padding:2rem;">Stellt ${esc(cur.name.split(' ')[0])} eine Frage.</div>`;return;}
+  ct.innerHTML=msgs.map(m=>`<div class="msg ${m.role}"><div class="bubble">${esc(m.c).replace(/\n/g,'<br>')}</div><div class="mtime">${esc(m.ts)}</div></div>`).join('');
+  ct.scrollTop=ct.scrollHeight;
+}
+
+function ck(e){if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();send();}}
+
+async function send(){
+  if(!cur){alert('Wähle zuerst einen Verdächtigen.');return;}
+  const inp=document.getElementById('inp');
+  const tx=inp.value.trim(); if(!tx)return;
+  if(tx.length>500){alert('Nachricht zu lang (max. 500 Zeichen).');return;}
+  inp.value=''; inp.disabled=true;
+  document.querySelector('.csend').disabled=true;
+  const now=new Date().toLocaleTimeString('de-CH',{hour:'2-digit',minute:'2-digit'});
+  hist[cur.name].push({role:'user',c:tx,ts:now}); renderMsgs();
+  const ct=document.getElementById('cm');
+  const tp=document.createElement('div'); tp.id='tp'; tp.className='msg ai';
+  tp.innerHTML='<div class="bubble"><div class="typing"><span></span><span></span><span></span></div></div>';
+  ct.appendChild(tp); ct.scrollTop=ct.scrollHeight;
+  try{
+    const history=hist[cur.name].filter(m=>m.role==='user'||m.role==='ai').slice(0,-1).map(m=>({role:m.role==='user'?'user':'assistant',content:m.c}));
+    const r=await fetch('/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({suspect:cur.name,message:tx,history})});
+    const d=await r.json();
+    if(!r.ok) throw new Error(d.error||'Fehler');
+    const rep=d.reply||'...';
+    document.getElementById('tp')?.remove();
+    const rt=new Date().toLocaleTimeString('de-CH',{hour:'2-digit',minute:'2-digit'});
+    hist[cur.name].push({role:'ai',c:rep,ts:rt}); renderMsgs();
+  }catch(err){
+    document.getElementById('tp')?.remove();
+    hist[cur.name].push({role:'ai',c:'Verbindung unterbrochen. Bitte versuche es erneut.',ts:'—'}); renderMsgs();
+  }finally{
+    inp.disabled=false; document.querySelector('.csend').disabled=false; inp.focus();
+  }
+}
+
+function show(id,btn){
+  document.querySelectorAll('.sec').forEach(s=>s.classList.remove('on'));
+  document.querySelectorAll('nav button').forEach(b=>b.classList.remove('active'));
+  document.getElementById('sec-'+id).classList.add('on'); if(btn)btn.classList.add('active');
+}
+
+async function sha256(s){const buf=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(s));return Array.from(new Uint8Array(buf)).map(b=>b.toString(16).padStart(2,'0')).join('');}
+
+async function chk(){
+  const v=document.getElementById('ci').value.toUpperCase();
+  const em=document.getElementById('em');
+  const hash=await sha256(v);
+  if(hash==='2ec92f3f04d05b458a49362497b94fdfe2f8716f39f27342cf7936bcd864bc10'){
+    const ls=document.getElementById('login-screen');
+    ls.style.opacity='0'; ls.style.transition='opacity .5s';
+    setTimeout(()=>{ls.style.display='none';document.getElementById('app').style.display='block';boot();},500);
+  } else {
+    const inp=document.getElementById('ci');
+    inp.classList.add('shake'); setTimeout(()=>inp.classList.remove('shake'),300);
+    em.textContent='Ungültiger Code. Überprüfe das rote Kärtchen in deiner Box.';
+  }
+}
+document.addEventListener('DOMContentLoaded',()=>{
+  document.getElementById('ci').addEventListener('keydown',e=>{if(e.key==='Enter')chk();});
+});
+document.addEventListener('keydown',e=>{if(e.key==='Escape')cm2();});
+function boot(){initTL();initEV();initSV();initSBS();}
+</script>
 </body>
 </html>
