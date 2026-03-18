@@ -8,6 +8,10 @@
       "source": "/(.*)",
       "has": [{ "type": "host", "value": "fall01.krimi.shop" }],
       "destination": "/faelle/fall01/$1"
+    },
+    {
+      "source": "/(.*)",
+      "destination": "/faelle/fall01/$1"
     }
   ]
 }
