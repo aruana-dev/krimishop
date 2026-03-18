@@ -1,0 +1,9 @@
+{
+  "rewrites": [
+    {
+      "source": "/(.*)",
+      "has": [{ "type": "host", "value": "(?<fall>.+).krimi.shop" }],
+      "destination": "/faelle/:fall/$1"
+    }
+  ]
+}
