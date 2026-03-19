@@ -124,9 +124,11 @@ nav button.active{color:var(--gold);}
 .voice-btn:hover{border-color:var(--gold);color:var(--text);}
 .voice-btn.recording{border-color:var(--red);background:rgba(200,16,46,.15);color:var(--red);animation:pulse 1.5s infinite;}
 .voice-btn.speaking{border-color:var(--gold);background:rgba(201,168,76,.15);color:var(--gold);}
+.voice-btn.live{border-color:var(--gold);background:rgba(201,168,76,.1);color:var(--gold);animation:pulse 2s infinite;}
 @keyframes pulse{0%,100%{box-shadow:0 0 0 0 rgba(200,16,46,.3)}50%{box-shadow:0 0 0 18px rgba(200,16,46,0)}}
 .voice-status{font-family:'Oswald',sans-serif;font-size:.78rem;letter-spacing:.15em;text-transform:uppercase;color:var(--muted);}
 .voice-transcript{font-size:.85rem;color:var(--muted);font-style:italic;text-align:center;max-width:400px;min-height:1.5rem;}
+.voice-note{font-size:.7rem;color:var(--faint);margin-top:.5rem;text-align:center;}
 /* MODAL */
 .moverlay{position:fixed;inset:0;background:rgba(0,0,0,.82);z-index:500;display:none;align-items:center;justify-content:center;padding:1rem;}
 .moverlay.on{display:flex;}
@@ -255,6 +257,7 @@ nav button.active{color:var(--gold);}
           <div class="voice-status" id="voice-status">Bereit</div>
           <button class="voice-btn" id="voice-btn" onclick="toggleVoice()">&#9679;</button>
           <div class="voice-transcript" id="voice-transcript"></div>
+          <div class="voice-note">Full-duplex — speak freely, interrupt anytime (English only)</div>
         </div>
         <div class="chatinput" id="text-input">
           <textarea class="cinput" id="inp" rows="1" placeholder="Deine Frage…" onkeydown="ck(event)"></textarea>
@@ -410,6 +413,7 @@ function selS(i){
   if(voiceMode==='text') document.getElementById('inp').focus();
   if(voiceMode==='voice'){
     document.getElementById('voice-transcript').textContent='';
+    disconnectVoice();
     connectVoice();
   }
 }
@@ -486,18 +490,39 @@ document.addEventListener('DOMContentLoaded',()=>{
 document.addEventListener('keydown',e=>{if(e.key==='Escape')cm2();});
 function boot(){initTL();initEV();initSV();initSBS();}
 
-// ── VOICE MODE ──
+// ── VOICE MODE (NVIDIA PersonaPlex) ──
+// Full-duplex speech-to-speech via Moshi binary WebSocket protocol.
+// Requires a running PersonaPlex server (GPU). English only.
+
 let voiceMode='text';
-let humeWs=null;
-let humeToken=null;
+let ppWs=null;
+let voiceConnected=false;
+let recording=false;
+let captureCtx=null;
 let playbackCtx=null;
 let mediaStream=null;
-let recorder=null;
-let voiceConnected=false;
-let audioQueue=[];
+let captureWorklet=null;
+let playbackQueue=[];
 let isPlaying=false;
 
-const HUME_CONFIG_ID='5db6f430-6704-4a3b-bc5e-b4fd77174e22';
+// ── CONFIG ── Set this to your PersonaPlex server URL
+const PP_SERVER=window.PERSONAPLEX_URL||'wss://localhost:8998/api/chat';
+
+// Persona prompts per suspect (English for PersonaPlex)
+const PP_PERSONAS={
+  "Sandra Keller":"You are Sandra Keller (48), estranged wife of Thomas Keller. You were at yoga from 7-8:30 PM. You admit the life insurance. You are under financial pressure. You know about some 'accounting matter' Thomas mentioned in late September, but you have no details. Respond in character, upset but controlled. Never admit what you don't know. Keep answers short — 2-3 sentences max, like a real police interrogation.",
+  "Marco Ferretti":"You are Marco Ferretti (45), business partner of Thomas Keller, responsible for bookkeeping. You claim you were at your sister's in Thun that evening (arrived ~8:30 PM). You say the books are clean. You only admitted WhatsApp contact after being confronted. Get nervous when asked about account 5000 or the companies. Respond in character, controlled. Keep answers short — 2-3 sentences, like a real interrogation.",
+  "Lena Bauer":"You are Lena Bauer (29), fired assistant. You were at Restaurant Lorenzini from about 7:17 to 10:43 PM. You still have the shop key. You reluctantly admit you were near Kramgasse before and after dinner, if asked. You had no motive for murder. Respond in character, honest but hurt. Keep answers short — 2-3 sentences.",
+  "Roland Huber":"You are Roland Huber (61), retired banker and collector. You confronted Thomas loudly about a forged antique but did not attack him. You saw Marco Ferretti briefly on Kramgasse around 4:30 PM. You claim you were home in Muri from 5:30 PM. You had nothing to do with the murder. You wear Davidoff Cool Water. Respond in character, dignified, annoyed. Keep answers short — 2-3 sentences.",
+};
+
+// Voice assignments per suspect
+const PP_VOICES={
+  "Sandra Keller":"NATF1",
+  "Marco Ferretti":"NATM1",
+  "Lena Bauer":"NATF2",
+  "Roland Huber":"NATM3",
+};
 
 function setMode(mode){
   voiceMode=mode;
@@ -511,193 +536,183 @@ function setMode(mode){
   if(mode==='text') disconnectVoice();
 }
 
-async function getHumeToken(){
-  if(humeToken) return humeToken;
-  const r=await fetch('/api/hume-token');
-  const d=await r.json();
-  if(!r.ok) throw new Error(d.error||'Token error');
-  humeToken=d.accessToken;
-  setTimeout(()=>{humeToken=null;},25*60*1000);
-  return humeToken;
-}
-
-// Detect best supported audio MIME type for MediaRecorder
-function getMimeType(){
-  const types=['audio/webm','audio/mp4','audio/wav'];
-  for(const t of types){if(MediaRecorder.isTypeSupported(t)) return t;}
-  return '';
-}
-
 async function connectVoice(){
   if(!cur){
-    document.getElementById('voice-status').textContent='Wähle einen Verdächtigen';
+    document.getElementById('voice-status').textContent='Select a suspect first';
     return;
   }
   if(voiceConnected) disconnectVoice();
 
-  document.getElementById('voice-status').textContent='Verbinde...';
+  const status=document.getElementById('voice-status');
+  status.textContent='Connecting...';
+
   try{
-    const token=await getHumeToken();
-    const params=new URLSearchParams({access_token:token});
-    if(HUME_CONFIG_ID) params.set('config_id',HUME_CONFIG_ID);
-    // Connect to Hume EVI WebSocket
-    humeWs=new WebSocket(`wss://api.hume.ai/v0/evi/chat?${params}`);
-    humeWs.onopen=()=>{
+    const voice=PP_VOICES[cur.name]||'NATM0';
+    const persona=PP_PERSONAS[cur.name]||'You are a suspect in a murder case.';
+    const params=new URLSearchParams({voice_prompt:voice,text_prompt:persona});
+    const url=PP_SERVER+(PP_SERVER.includes('?')?'&':'?')+params.toString();
+
+    ppWs=new WebSocket(url);
+    ppWs.binaryType='arraybuffer';
+
+    ppWs.onopen=async()=>{
       voiceConnected=true;
-      // Send session_settings with custom_session_id (suspect name for CLM)
-      humeWs.send(JSON.stringify({
-        type:'session_settings',
-        custom_session_id:cur.name
-      }));
-      document.getElementById('voice-status').textContent='Drücke zum Sprechen';
+      status.textContent='Connected — tap to start';
       document.getElementById('voice-btn').style.opacity='1';
+      console.log('PersonaPlex connected');
     };
-    humeWs.onmessage=(e)=>{
-      try{const msg=JSON.parse(e.data);handleHumeMessage(msg);}catch{}
+
+    ppWs.onmessage=(e)=>{
+      if(e.data instanceof ArrayBuffer){
+        handlePPAudio(new Uint8Array(e.data));
+      }else{
+        // Text message (metadata, transcripts)
+        try{
+          const msg=JSON.parse(e.data);
+          if(msg.text) document.getElementById('voice-transcript').textContent=msg.text;
+        }catch{}
+      }
     };
-    humeWs.onerror=(e)=>{
-      console.error('Hume WS error:',e);
-      document.getElementById('voice-status').textContent='Verbindungsfehler';
+
+    ppWs.onerror=(e)=>{
+      console.error('PersonaPlex WS error:',e);
+      status.textContent='Connection error';
       voiceConnected=false;
     };
-    humeWs.onclose=(e)=>{
-      console.log('Hume WS closed:',e.code,e.reason);
+
+    ppWs.onclose=(e)=>{
+      console.log('PersonaPlex WS closed:',e.code,e.reason);
       voiceConnected=false;
-      document.getElementById('voice-status').textContent='Getrennt';
+      recording=false;
+      status.textContent='Disconnected';
       document.getElementById('voice-btn').className='voice-btn';
+      stopCapture();
     };
   }catch(err){
-    document.getElementById('voice-status').textContent='Fehler: '+err.message;
+    status.textContent='Error: '+err.message;
   }
 }
 
 function disconnectVoice(){
-  if(recorder&&recorder.state!=='inactive'){recorder.stop();recorder=null;}
-  if(mediaStream){mediaStream.getTracks().forEach(t=>t.stop());mediaStream=null;}
-  if(humeWs){humeWs.close();humeWs=null;}
+  stopCapture();
+  if(ppWs){ppWs.close();ppWs=null;}
   voiceConnected=false;
-  audioQueue=[];
+  recording=false;
+  playbackQueue=[];
   isPlaying=false;
 }
 
-function handleHumeMessage(msg){
-  const status=document.getElementById('voice-status');
-  const transcript=document.getElementById('voice-transcript');
-  const btn=document.getElementById('voice-btn');
+// ── AUDIO CAPTURE (Mic → PCM → Opus → WebSocket) ──
 
-  switch(msg.type){
-    case 'chat_metadata':
-      console.log('Hume chat started:',msg.chat_id);
-      break;
-    case 'user_message':
-      if(msg.message?.content){
-        transcript.textContent='Du: '+msg.message.content;
-        const now=new Date().toLocaleTimeString('de-CH',{hour:'2-digit',minute:'2-digit'});
-        if(cur&&hist[cur.name]) hist[cur.name].push({role:'user',c:msg.message.content,ts:now});
-      }
-      break;
-    case 'assistant_message':
-      if(msg.message?.content){
-        transcript.textContent=cur.name.split(' ')[0]+': '+msg.message.content;
-        const now2=new Date().toLocaleTimeString('de-CH',{hour:'2-digit',minute:'2-digit'});
-        if(cur&&hist[cur.name]) hist[cur.name].push({role:'ai',c:msg.message.content,ts:now2});
-      }
-      status.textContent='Spricht...';
-      btn.className='voice-btn speaking';
-      break;
-    case 'audio_output':
-      if(msg.data) playAudioChunk(msg.data);
-      break;
-    case 'assistant_end':
-      status.textContent=recording?'Spreche jetzt...':'Drücke zum Sprechen';
-      btn.className=recording?'voice-btn recording':'voice-btn';
-      break;
-    case 'user_interruption':
-      audioQueue=[];
-      isPlaying=false;
-      break;
-    case 'error':
-      console.error('Hume error:',msg);
-      status.textContent='Fehler: '+(msg.message||'Unbekannt');
-      break;
-  }
-}
-
-let recording=false;
-
-async function toggleVoice(){
-  if(!cur){alert('Wähle zuerst einen Verdächtigen.');return;}
-  if(!voiceConnected) await connectVoice();
-  if(!voiceConnected) return;
-
-  if(recording){
-    stopMic();
-    recording=false;
-    document.getElementById('voice-btn').className='voice-btn';
-    document.getElementById('voice-status').textContent='Verarbeite...';
-  }else{
-    await startMic();
-    recording=true;
-    document.getElementById('voice-btn').className='voice-btn recording';
-    document.getElementById('voice-status').textContent='Spreche jetzt...';
-  }
-}
-
-async function startMic(){
+async function startCapture(){
   mediaStream=await navigator.mediaDevices.getUserMedia({
-    audio:{echoCancellation:true,noiseSuppression:true,autoGainControl:true}
+    audio:{sampleRate:24000,channelCount:1,echoCancellation:true,noiseSuppression:true,autoGainControl:true}
   });
-  const mimeType=getMimeType();
-  const options=mimeType?{mimeType}:{};
-  recorder=new MediaRecorder(mediaStream,options);
-  recorder.ondataavailable=(e)=>{
-    if(e.data.size>0&&humeWs&&humeWs.readyState===1){
-      const reader=new FileReader();
-      reader.onloadend=()=>{
-        const b64=reader.result.split(',')[1];
-        if(b64) humeWs.send(JSON.stringify({type:'audio_input',data:b64}));
-      };
-      reader.readAsDataURL(e.data);
+
+  captureCtx=new AudioContext({sampleRate:24000});
+  const source=captureCtx.createMediaStreamSource(mediaStream);
+
+  // ScriptProcessor to get PCM frames (960 samples = 40ms at 24kHz)
+  const processor=captureCtx.createScriptProcessor(960,1,1);
+  processor.onaudioprocess=(e)=>{
+    if(!recording||!ppWs||ppWs.readyState!==1) return;
+    const pcm=e.inputBuffer.getChannelData(0);
+    // Convert Float32 PCM to Int16 PCM
+    const int16=new Int16Array(pcm.length);
+    for(let i=0;i<pcm.length;i++){
+      const s=Math.max(-1,Math.min(1,pcm[i]));
+      int16[i]=s<0?s*0x8000:s*0x7FFF;
     }
+    // Send as binary: type byte 0x01 + PCM data
+    const msg=new Uint8Array(1+int16.byteLength);
+    msg[0]=0x01;
+    msg.set(new Uint8Array(int16.buffer),1);
+    ppWs.send(msg.buffer);
   };
-  // Send 100ms chunks (recommended for web)
-  recorder.start(100);
+
+  source.connect(processor);
+  processor.connect(captureCtx.destination);
+  captureWorklet=processor;
 }
 
-function stopMic(){
-  if(recorder&&recorder.state!=='inactive'){recorder.stop();recorder=null;}
+function stopCapture(){
+  if(captureWorklet){captureWorklet.disconnect();captureWorklet=null;}
   if(mediaStream){mediaStream.getTracks().forEach(t=>t.stop());mediaStream=null;}
+  if(captureCtx){captureCtx.close().catch(()=>{});captureCtx=null;}
 }
 
-function base64ToArrayBuffer(b64){
-  const binary=atob(b64);
-  const bytes=new Uint8Array(binary.length);
-  for(let i=0;i<binary.length;i++) bytes[i]=binary.charCodeAt(i);
-  return bytes.buffer;
+// ── AUDIO PLAYBACK (WebSocket → PCM/Opus → Speaker) ──
+
+function handlePPAudio(data){
+  if(data.length<2) return;
+  const type=data[0];
+  if(type!==0x01) return; // Only handle audio messages
+  const audioData=data.slice(1);
+  playbackQueue.push(audioData);
+  if(!isPlaying) playNextChunk();
 }
 
-async function playAudioChunk(b64Data){
-  audioQueue.push(b64Data);
-  if(!isPlaying) playNext();
-}
-
-async function playNext(){
-  if(!audioQueue.length){isPlaying=false;return;}
+async function playNextChunk(){
+  if(!playbackQueue.length){isPlaying=false;return;}
   isPlaying=true;
-  const b64=audioQueue.shift();
+  const chunk=playbackQueue.shift();
+
   try{
-    if(!playbackCtx) playbackCtx=new AudioContext();
-    const buf=base64ToArrayBuffer(b64);
-    const audioBuf=await playbackCtx.decodeAudioData(buf);
+    if(!playbackCtx) playbackCtx=new AudioContext({sampleRate:24000});
+    if(playbackCtx.state==='suspended') await playbackCtx.resume();
+
+    // Try decoding as WAV/Opus container first
+    try{
+      const buf=chunk.buffer.slice(chunk.byteOffset,chunk.byteOffset+chunk.byteLength);
+      const audioBuf=await playbackCtx.decodeAudioData(buf.slice(0));
+      const source=playbackCtx.createBufferSource();
+      source.buffer=audioBuf;
+      source.connect(playbackCtx.destination);
+      source.onended=()=>playNextChunk();
+      source.start();
+      return;
+    }catch{}
+
+    // Fallback: treat as raw Int16 PCM at 24kHz
+    const int16=new Int16Array(chunk.buffer,chunk.byteOffset,chunk.byteLength/2);
+    const float32=new Float32Array(int16.length);
+    for(let i=0;i<int16.length;i++) float32[i]=int16[i]/32768;
+    const audioBuf=playbackCtx.createBuffer(1,float32.length,24000);
+    audioBuf.getChannelData(0).set(float32);
     const source=playbackCtx.createBufferSource();
     source.buffer=audioBuf;
     source.connect(playbackCtx.destination);
-    source.onended=()=>playNext();
+    source.onended=()=>playNextChunk();
     source.start();
   }catch(err){
-    console.error('Audio playback error:',err);
-    playNext();
+    console.error('Playback error:',err);
+    playNextChunk();
   }
+}
+
+// ── VOICE TOGGLE (full-duplex: always listening while connected) ──
+
+async function toggleVoice(){
+  if(!cur){alert('Select a suspect first.');return;}
+
+  if(recording){
+    // Stop streaming
+    recording=false;
+    stopCapture();
+    document.getElementById('voice-btn').className='voice-btn';
+    document.getElementById('voice-status').textContent='Stopped';
+    disconnectVoice();
+    return;
+  }
+
+  // Start full-duplex session
+  if(!voiceConnected) await connectVoice();
+  if(!voiceConnected) return;
+
+  await startCapture();
+  recording=true;
+  document.getElementById('voice-btn').className='voice-btn live';
+  document.getElementById('voice-status').textContent='Live — speak freely';
 }
 </script>
 </body>
