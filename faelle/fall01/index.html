@@ -533,14 +533,10 @@ async function connectVoice(){
     const token=await getHumeToken();
     const params=new URLSearchParams({access_token:token});
     if(HUME_CONFIG_ID) params.set('config_id',HUME_CONFIG_ID);
+    params.set('custom_session_id',cur.name);
     humeWs=new WebSocket(`wss://api.hume.ai/v0/evi/chat?${params}`);
     humeWs.onopen=()=>{
       voiceConnected=true;
-      // Set suspect as custom_session_id so CLM knows which persona to use
-      humeWs.send(JSON.stringify({
-        type:'session_settings',
-        custom_session_id:cur.name
-      }));
       document.getElementById('voice-status').textContent='Drücke zum Sprechen';
       document.getElementById('voice-btn').style.opacity='1';
     };
