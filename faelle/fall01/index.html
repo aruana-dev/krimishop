@@ -541,7 +541,7 @@ async function connectVoice(){
     const params=new URLSearchParams({access_token:token});
     if(HUME_CONFIG_ID) params.set('config_id',HUME_CONFIG_ID);
     // Connect to Hume EVI WebSocket
-    humeWs=new WebSocket(`wss://api.hume.ai/v0/evi?${params}`);
+    humeWs=new WebSocket(`wss://api.hume.ai/v0/evi/chat?${params}`);
     humeWs.onopen=()=>{
       voiceConnected=true;
       // Send session_settings with custom_session_id (suspect name for CLM)
