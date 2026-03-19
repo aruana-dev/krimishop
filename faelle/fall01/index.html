@@ -414,7 +414,6 @@ function selS(i){
   if(voiceMode==='voice'){
     document.getElementById('voice-transcript').textContent='';
     disconnectVoice();
-    connectVoice();
   }
 }
 
@@ -532,65 +531,58 @@ function setMode(mode){
   document.getElementById('text-input').style.display=mode==='text'?'flex':'none';
   document.getElementById('voice-ui').classList.toggle('on',mode==='voice');
   document.getElementById('cm').style.display=mode==='text'?'flex':'none';
-  if(mode==='voice'&&cur) connectVoice();
   if(mode==='text') disconnectVoice();
 }
 
-async function connectVoice(){
-  if(!cur){
-    document.getElementById('voice-status').textContent='Select a suspect first';
-    return;
-  }
-  if(voiceConnected) disconnectVoice();
+function connectVoice(){
+  return new Promise((resolve)=>{
+    if(!cur){resolve();return;}
+    if(voiceConnected) disconnectVoice();
 
-  const status=document.getElementById('voice-status');
-  status.textContent='Connecting...';
+    try{
+      const voice=PP_VOICES[cur.name]||'NATM0';
+      const persona=PP_PERSONAS[cur.name]||'You are a suspect in a murder case.';
+      const params=new URLSearchParams({voice_prompt:voice,text_prompt:persona});
+      const url=PP_SERVER+(PP_SERVER.includes('?')?'&':'?')+params.toString();
 
-  try{
-    const voice=PP_VOICES[cur.name]||'NATM0';
-    const persona=PP_PERSONAS[cur.name]||'You are a suspect in a murder case.';
-    const params=new URLSearchParams({voice_prompt:voice,text_prompt:persona});
-    const url=PP_SERVER+(PP_SERVER.includes('?')?'&':'?')+params.toString();
+      ppWs=new WebSocket(url);
+      ppWs.binaryType='arraybuffer';
 
-    ppWs=new WebSocket(url);
-    ppWs.binaryType='arraybuffer';
+      ppWs.onopen=()=>{
+        voiceConnected=true;
+        console.log('PersonaPlex connected');
+        resolve();
+      };
 
-    ppWs.onopen=async()=>{
-      voiceConnected=true;
-      status.textContent='Connected — tap to start';
-      document.getElementById('voice-btn').style.opacity='1';
-      console.log('PersonaPlex connected');
-    };
+      ppWs.onmessage=(e)=>{
+        if(e.data instanceof ArrayBuffer){
+          handlePPAudio(new Uint8Array(e.data));
+        }else{
+          try{
+            const msg=JSON.parse(e.data);
+            if(msg.text) document.getElementById('voice-transcript').textContent=msg.text;
+          }catch{}
+        }
+      };
 
-    ppWs.onmessage=(e)=>{
-      if(e.data instanceof ArrayBuffer){
-        handlePPAudio(new Uint8Array(e.data));
-      }else{
-        // Text message (metadata, transcripts)
-        try{
-          const msg=JSON.parse(e.data);
-          if(msg.text) document.getElementById('voice-transcript').textContent=msg.text;
-        }catch{}
-      }
-    };
+      ppWs.onerror=(e)=>{
+        console.error('PersonaPlex WS error:',e);
+        voiceConnected=false;
+        resolve();
+      };
 
-    ppWs.onerror=(e)=>{
-      console.error('PersonaPlex WS error:',e);
-      status.textContent='Connection error';
-      voiceConnected=false;
-    };
-
-    ppWs.onclose=(e)=>{
-      console.log('PersonaPlex WS closed:',e.code,e.reason);
-      voiceConnected=false;
-      recording=false;
-      status.textContent='Disconnected';
-      document.getElementById('voice-btn').className='voice-btn';
-      stopCapture();
-    };
-  }catch(err){
-    status.textContent='Error: '+err.message;
-  }
+      ppWs.onclose=(e)=>{
+        console.log('PersonaPlex WS closed:',e.code,e.reason);
+        voiceConnected=false;
+        recording=false;
+        document.getElementById('voice-status').textContent='Disconnected';
+        document.getElementById('voice-btn').className='voice-btn';
+      };
+    }catch(err){
+      console.error('Connect error:',err);
+      resolve();
+    }
+  });
 }
 
 function disconnectVoice(){
@@ -696,21 +688,27 @@ async function toggleVoice(){
   if(!cur){alert('Select a suspect first.');return;}
 
   if(recording){
-    // Stop streaming
     recording=false;
     stopCapture();
-    document.getElementById('voice-btn').className='voice-btn';
-    document.getElementById('voice-status').textContent='Stopped';
     disconnectVoice();
+    document.getElementById('voice-btn').className='voice-btn';
+    document.getElementById('voice-status').textContent='Tap to start';
     return;
   }
 
-  // Start full-duplex session
-  if(!voiceConnected) await connectVoice();
-  if(!voiceConnected) return;
-
+  // Start mic FIRST so audio is ready when WebSocket opens
+  document.getElementById('voice-status').textContent='Starting mic...';
   await startCapture();
   recording=true;
+
+  // Now connect — audio will stream immediately on open
+  document.getElementById('voice-status').textContent='Connecting...';
+  await connectVoice();
+  if(!voiceConnected){
+    recording=false;
+    stopCapture();
+    return;
+  }
   document.getElementById('voice-btn').className='voice-btn live';
   document.getElementById('voice-status').textContent='Live — speak freely';
 }
