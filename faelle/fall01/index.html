@@ -254,8 +254,9 @@ nav button.active{color:var(--gold);}
         </div>
         <div class="chatmsgs" id="cm"><div style="text-align:center;color:var(--muted);font-style:italic;font-size:.88rem;padding:2rem;">Wähle links einen Verdächtigen.</div></div>
         <div class="voice-ui" id="voice-ui">
-          <div class="voice-status" id="voice-status">Bereit</div>
-          <button class="voice-btn" id="voice-btn" onclick="toggleVoice()">&#9679;</button>
+          <div class="voice-status" id="voice-status">Select a suspect, then tap Start</div>
+          <iframe id="pp-frame" style="display:none;width:100%;height:500px;border:1px solid var(--border);border-radius:4px;background:var(--card);" allow="microphone"></iframe>
+          <button class="voice-btn" id="voice-btn" onclick="startPP()">&#9654;</button>
           <div class="voice-transcript" id="voice-transcript"></div>
           <div class="voice-note">Full-duplex — speak freely, interrupt anytime (English only)</div>
         </div>
@@ -413,7 +414,9 @@ function selS(i){
   if(voiceMode==='text') document.getElementById('inp').focus();
   if(voiceMode==='voice'){
     document.getElementById('voice-transcript').textContent='';
-    disconnectVoice();
+    document.getElementById('pp-frame').src='';
+    document.getElementById('pp-frame').style.display='none';
+    document.getElementById('voice-btn').style.display='';
   }
 }
 
@@ -489,33 +492,21 @@ document.addEventListener('DOMContentLoaded',()=>{
 document.addEventListener('keydown',e=>{if(e.key==='Escape')cm2();});
 function boot(){initTL();initEV();initSV();initSBS();}
 
-// ── VOICE MODE (NVIDIA PersonaPlex) ──
-// Full-duplex speech-to-speech via Moshi binary WebSocket protocol.
-// Requires a running PersonaPlex server (GPU). English only.
+// ── VOICE MODE (NVIDIA PersonaPlex via embedded UI) ──
+// PersonaPlex uses a complex Opus/Ogg WebSocket protocol with WASM workers.
+// We embed the official UI in an iframe with persona params via URL.
 
 let voiceMode='text';
-let ppWs=null;
-let voiceConnected=false;
-let recording=false;
-let captureCtx=null;
-let playbackCtx=null;
-let mediaStream=null;
-let captureWorklet=null;
-let playbackQueue=[];
-let isPlaying=false;
 
-// ── CONFIG ── Set this to your PersonaPlex server URL
-const PP_SERVER=window.PERSONAPLEX_URL||'wss://103.196.86.83:19386/api/chat';
+const PP_BASE=window.PERSONAPLEX_URL||'https://103.196.86.83:19386';
 
-// Persona prompts per suspect (English for PersonaPlex)
 const PP_PERSONAS={
-  "Sandra Keller":"You are Sandra Keller (48), estranged wife of Thomas Keller. You were at yoga from 7-8:30 PM. You admit the life insurance. You are under financial pressure. You know about some 'accounting matter' Thomas mentioned in late September, but you have no details. Respond in character, upset but controlled. Never admit what you don't know. Keep answers short — 2-3 sentences max, like a real police interrogation.",
-  "Marco Ferretti":"You are Marco Ferretti (45), business partner of Thomas Keller, responsible for bookkeeping. You claim you were at your sister's in Thun that evening (arrived ~8:30 PM). You say the books are clean. You only admitted WhatsApp contact after being confronted. Get nervous when asked about account 5000 or the companies. Respond in character, controlled. Keep answers short — 2-3 sentences, like a real interrogation.",
-  "Lena Bauer":"You are Lena Bauer (29), fired assistant. You were at Restaurant Lorenzini from about 7:17 to 10:43 PM. You still have the shop key. You reluctantly admit you were near Kramgasse before and after dinner, if asked. You had no motive for murder. Respond in character, honest but hurt. Keep answers short — 2-3 sentences.",
-  "Roland Huber":"You are Roland Huber (61), retired banker and collector. You confronted Thomas loudly about a forged antique but did not attack him. You saw Marco Ferretti briefly on Kramgasse around 4:30 PM. You claim you were home in Muri from 5:30 PM. You had nothing to do with the murder. You wear Davidoff Cool Water. Respond in character, dignified, annoyed. Keep answers short — 2-3 sentences.",
+  "Sandra Keller":"You are Sandra Keller (48), estranged wife of Thomas Keller. You were at yoga from 7-8:30 PM. You admit the life insurance. You are under financial pressure. You know about some accounting matter Thomas mentioned in late September but have no details. Respond upset but controlled. Keep answers short, 2-3 sentences max, like a real police interrogation.",
+  "Marco Ferretti":"You are Marco Ferretti (45), business partner of Thomas Keller, responsible for bookkeeping. You claim you were at your sisters in Thun that evening, arrived around 8:30 PM. You say the books are clean. You only admitted WhatsApp contact after being confronted. Get nervous when asked about account 5000. Keep answers short, 2-3 sentences.",
+  "Lena Bauer":"You are Lena Bauer (29), fired assistant. You were at Restaurant Lorenzini from about 7:17 to 10:43 PM. You still have the shop key. You reluctantly admit you were near Kramgasse before and after dinner if asked. You had no motive for murder. Respond honest but hurt. Keep answers short, 2-3 sentences.",
+  "Roland Huber":"You are Roland Huber (61), retired banker and collector. You confronted Thomas loudly about a forged antique but did not attack him. You saw Marco Ferretti briefly on Kramgasse around 4:30 PM. You claim you were home in Muri from 5:30 PM. You had nothing to do with the murder. You wear Davidoff Cool Water. Respond dignified, annoyed. Keep answers short, 2-3 sentences.",
 };
 
-// Voice assignments per suspect
 const PP_VOICES={
   "Sandra Keller":"NATF1",
   "Marco Ferretti":"NATM1",
@@ -531,190 +522,25 @@ function setMode(mode){
   document.getElementById('text-input').style.display=mode==='text'?'flex':'none';
   document.getElementById('voice-ui').classList.toggle('on',mode==='voice');
   document.getElementById('cm').style.display=mode==='text'?'flex':'none';
-  if(mode==='text') disconnectVoice();
-}
-
-function connectVoice(){
-  return new Promise((resolve)=>{
-    if(!cur){resolve();return;}
-    if(voiceConnected) disconnectVoice();
-
-    try{
-      const voice=PP_VOICES[cur.name]||'NATM0';
-      const persona=PP_PERSONAS[cur.name]||'You are a suspect in a murder case.';
-      const params=new URLSearchParams({voice_prompt:voice,text_prompt:persona});
-      const url=PP_SERVER+(PP_SERVER.includes('?')?'&':'?')+params.toString();
-
-      ppWs=new WebSocket(url);
-      ppWs.binaryType='arraybuffer';
-
-      ppWs.onopen=()=>{
-        voiceConnected=true;
-        console.log('PersonaPlex connected');
-        resolve();
-      };
-
-      ppWs.onmessage=(e)=>{
-        if(e.data instanceof ArrayBuffer){
-          handlePPAudio(new Uint8Array(e.data));
-        }else{
-          try{
-            const msg=JSON.parse(e.data);
-            if(msg.text) document.getElementById('voice-transcript').textContent=msg.text;
-          }catch{}
-        }
-      };
-
-      ppWs.onerror=(e)=>{
-        console.error('PersonaPlex WS error:',e);
-        voiceConnected=false;
-        resolve();
-      };
-
-      ppWs.onclose=(e)=>{
-        console.log('PersonaPlex WS closed:',e.code,e.reason);
-        voiceConnected=false;
-        recording=false;
-        document.getElementById('voice-status').textContent='Disconnected';
-        document.getElementById('voice-btn').className='voice-btn';
-      };
-    }catch(err){
-      console.error('Connect error:',err);
-      resolve();
-    }
-  });
-}
-
-function disconnectVoice(){
-  stopCapture();
-  if(ppWs){ppWs.close();ppWs=null;}
-  voiceConnected=false;
-  recording=false;
-  playbackQueue=[];
-  isPlaying=false;
-}
-
-// ── AUDIO CAPTURE (Mic → PCM → Opus → WebSocket) ──
-
-let recorder=null;
-
-async function startCapture(){
-  mediaStream=await navigator.mediaDevices.getUserMedia({
-    audio:{echoCancellation:true,noiseSuppression:true,autoGainControl:true}
-  });
-
-  // Use MediaRecorder with Opus codec — PersonaPlex/Moshi expects Opus
-  const mimeTypes=['audio/webm;codecs=opus','audio/webm','audio/ogg;codecs=opus'];
-  let mimeType='';
-  for(const t of mimeTypes){if(MediaRecorder.isTypeSupported(t)){mimeType=t;break;}}
-
-  const options=mimeType?{mimeType}:{};
-  recorder=new MediaRecorder(mediaStream,options);
-  console.log('MediaRecorder using:',mimeType||'default');
-
-  recorder.ondataavailable=async(e)=>{
-    if(e.data.size>0&&ppWs&&ppWs.readyState===1){
-      const buf=await e.data.arrayBuffer();
-      // Send raw binary (Moshi protocol expects Opus in container)
-      ppWs.send(buf);
-    }
-  };
-  // 40ms chunks to match Moshi's expected frame size
-  recorder.start(40);
-}
-
-function stopCapture(){
-  if(recorder&&recorder.state!=='inactive'){recorder.stop();recorder=null;}
-  if(mediaStream){mediaStream.getTracks().forEach(t=>t.stop());mediaStream=null;}
-}
-
-// ── AUDIO PLAYBACK (WebSocket → PCM/Opus → Speaker) ──
-
-function handlePPAudio(data){
-  if(data.length<2) return;
-  const type=data[0];
-  if(type===0x01){
-    // Audio frame: type byte + Opus/PCM payload
-    const audioData=data.slice(1);
-    playbackQueue.push(audioData);
-    if(!isPlaying) playNextChunk();
-  }else if(type===0x02){
-    // Text/metadata frame
-    try{
-      const text=new TextDecoder().decode(data.slice(1));
-      console.log('PersonaPlex text:',text);
-      document.getElementById('voice-transcript').textContent=text;
-    }catch{}
+  if(mode==='text'){
+    document.getElementById('pp-frame').style.display='none';
+    document.getElementById('pp-frame').src='';
   }
 }
 
-async function playNextChunk(){
-  if(!playbackQueue.length){isPlaying=false;return;}
-  isPlaying=true;
-  const chunk=playbackQueue.shift();
-
-  try{
-    if(!playbackCtx) playbackCtx=new AudioContext();
-    if(playbackCtx.state==='suspended') await playbackCtx.resume();
-
-    // Try decoding as audio container (WAV/Opus)
-    const buf=chunk.buffer.slice(chunk.byteOffset,chunk.byteOffset+chunk.byteLength);
-    const audioBuf=await playbackCtx.decodeAudioData(buf.slice(0));
-    const source=playbackCtx.createBufferSource();
-    source.buffer=audioBuf;
-    source.connect(playbackCtx.destination);
-    source.onended=()=>playNextChunk();
-    source.start();
-  }catch(err){
-    // If decode fails, try as raw Int16 PCM at 24kHz
-    try{
-      if(!playbackCtx) playbackCtx=new AudioContext({sampleRate:24000});
-      const int16=new Int16Array(chunk.buffer,chunk.byteOffset,Math.floor(chunk.byteLength/2));
-      const float32=new Float32Array(int16.length);
-      for(let i=0;i<int16.length;i++) float32[i]=int16[i]/32768;
-      const audioBuf=playbackCtx.createBuffer(1,float32.length,24000);
-      audioBuf.getChannelData(0).set(float32);
-      const source=playbackCtx.createBufferSource();
-      source.buffer=audioBuf;
-      source.connect(playbackCtx.destination);
-      source.onended=()=>playNextChunk();
-      source.start();
-    }catch(err2){
-      console.error('Playback error:',err2);
-      playNextChunk();
-    }
-  }
-}
-
-// ── VOICE TOGGLE (full-duplex: always listening while connected) ──
-
-async function toggleVoice(){
+function startPP(){
   if(!cur){alert('Select a suspect first.');return;}
-
-  if(recording){
-    recording=false;
-    stopCapture();
-    disconnectVoice();
-    document.getElementById('voice-btn').className='voice-btn';
-    document.getElementById('voice-status').textContent='Tap to start';
-    return;
-  }
-
-  // Start mic FIRST so audio is ready when WebSocket opens
-  document.getElementById('voice-status').textContent='Starting mic...';
-  await startCapture();
-  recording=true;
-
-  // Now connect — audio will stream immediately on open
-  document.getElementById('voice-status').textContent='Connecting...';
-  await connectVoice();
-  if(!voiceConnected){
-    recording=false;
-    stopCapture();
-    return;
-  }
-  document.getElementById('voice-btn').className='voice-btn live';
-  document.getElementById('voice-status').textContent='Live — speak freely';
+  const persona=PP_PERSONAS[cur.name]||'You are a suspect in a murder case.';
+  const voice=PP_VOICES[cur.name]||'NATM0';
+  // Build URL with persona params — the PersonaPlex UI reads these from URL
+  const url=new URL(PP_BASE);
+  url.searchParams.set('text_prompt',persona);
+  url.searchParams.set('voice_prompt',voice);
+  const frame=document.getElementById('pp-frame');
+  frame.src=url.toString();
+  frame.style.display='block';
+  document.getElementById('voice-status').textContent=cur.name+' — tap Start in the panel below, then speak English';
+  document.getElementById('voice-btn').style.display='none';
 }
 </script>
 </body>
