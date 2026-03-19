@@ -1,4 +1,12 @@
 {
+  "functions": {
+    "api/chat/completions.js": {
+      "maxDuration": 30
+    },
+    "api/chat.js": {
+      "maxDuration": 30
+    }
+  },
   "rewrites": [
     {
       "source": "/api/:path*",

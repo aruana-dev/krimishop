@@ -1,4 +1,4 @@
-// CLM endpoint — Hume EVI calls this in OpenAI-compatible format.
+// CLM endpoint — Hume EVI calls this in OpenAI-compatible SSE format.
 // We inject the correct persona prompt and forward to Claude.
 
 const PERSONAS = {
@@ -25,13 +25,10 @@ export default async function handler(req, res) {
     return res.status(400).json({ error: "Messages required" });
   }
 
-  // Determine persona from custom_session_id
-  const persona = suspect && PERSONAS[suspect] ? PERSONAS[suspect] : null;
-  if (!persona) {
-    return res.status(400).json({ error: "Unknown suspect" });
-  }
+  // Determine persona — fallback to first persona if no session ID
+  const persona = suspect && PERSONAS[suspect] ? PERSONAS[suspect] : PERSONAS["Sandra Keller"];
 
-  // Convert OpenAI format messages to Claude format
+  // Strip Hume-specific fields (time, models) and keep only role + content
   const claudeMessages = [];
   for (const msg of messages) {
     if (msg.role === "user" || msg.role === "assistant") {
@@ -42,13 +39,37 @@ export default async function handler(req, res) {
     }
   }
 
-  // Keep last 20 messages
   const trimmedMessages = claudeMessages.slice(-20);
 
-  // Set SSE headers
+  // Generate a consistent ID for this entire stream
+  const streamId = `chatcmpl-${crypto.randomUUID()}`;
+  const created = Math.floor(Date.now() / 1000);
+
+  // SSE headers — X-Accel-Buffering: no is critical for Vercel/nginx
   res.setHeader("Content-Type", "text/event-stream");
-  res.setHeader("Cache-Control", "no-cache");
+  res.setHeader("Cache-Control", "no-cache, no-transform");
   res.setHeader("Connection", "keep-alive");
+  res.setHeader("X-Accel-Buffering", "no");
+
+  // Helper to write a chunk
+  function writeChunk(delta, finishReason) {
+    const chunk = {
+      id: streamId,
+      object: "chat.completion.chunk",
+      created,
+      model: "claude",
+      choices: [
+        {
+          index: 0,
+          delta,
+          finish_reason: finishReason || null,
+        },
+      ],
+    };
+    // Only include system_fingerprint if we have a suspect
+    if (suspect) chunk.system_fingerprint = suspect;
+    res.write(`data: ${JSON.stringify(chunk)}\n\n`);
+  }
 
   try {
     const response = await fetch("https://api.anthropic.com/v1/messages", {
@@ -70,28 +91,16 @@ export default async function handler(req, res) {
     if (!response.ok) {
       const err = await response.text();
       console.error("Claude API error:", response.status, err);
-      // Send error as SSE
-      const chunk = {
-        id: "error",
-        object: "chat.completion.chunk",
-        created: Math.floor(Date.now() / 1000),
-        model: "claude",
-        system_fingerprint: suspect,
-        choices: [
-          {
-            index: 0,
-            delta: {
-              role: "assistant",
-              content: "Entschuldigung, ich kann gerade nicht antworten.",
-            },
-            finish_reason: "stop",
-          },
-        ],
-      };
-      res.write(`data: ${JSON.stringify(chunk)}\n\n`);
+      // Send a proper error response: first role chunk, then content, then stop
+      writeChunk({ role: "assistant" }, null);
+      writeChunk({ content: "Entschuldigung, ich kann gerade nicht antworten." }, null);
+      writeChunk({}, "stop");
       res.write("data: [DONE]\n\n");
       return res.end();
     }
+
+    // Send initial role-only chunk (OpenAI convention)
+    writeChunk({ role: "assistant" }, null);
 
     const reader = response.body.getReader();
     const decoder = new TextDecoder();
@@ -117,35 +126,11 @@ export default async function handler(req, res) {
             event.type === "content_block_delta" &&
             event.delta?.type === "text_delta"
           ) {
-            const chunk = {
-              id: `chatcmpl-${Date.now()}`,
-              object: "chat.completion.chunk",
-              created: Math.floor(Date.now() / 1000),
-              model: "claude",
-              system_fingerprint: suspect,
-              choices: [
-                {
-                  index: 0,
-                  delta: { content: event.delta.text, role: "assistant" },
-                  finish_reason: null,
-                },
-              ],
-            };
-            res.write(`data: ${JSON.stringify(chunk)}\n\n`);
+            writeChunk({ content: event.delta.text }, null);
           }
 
           if (event.type === "message_stop") {
-            const chunk = {
-              id: `chatcmpl-${Date.now()}`,
-              object: "chat.completion.chunk",
-              created: Math.floor(Date.now() / 1000),
-              model: "claude",
-              system_fingerprint: suspect,
-              choices: [
-                { index: 0, delta: {}, finish_reason: "stop" },
-              ],
-            };
-            res.write(`data: ${JSON.stringify(chunk)}\n\n`);
+            writeChunk({}, "stop");
           }
         } catch {
           // Skip unparseable lines
@@ -157,23 +142,9 @@ export default async function handler(req, res) {
     return res.end();
   } catch (err) {
     console.error("CLM error:", err);
-    const chunk = {
-      id: "error",
-      object: "chat.completion.chunk",
-      created: Math.floor(Date.now() / 1000),
-      model: "claude",
-      choices: [
-        {
-          index: 0,
-          delta: {
-            role: "assistant",
-            content: "Verbindung unterbrochen.",
-          },
-          finish_reason: "stop",
-        },
-      ],
-    };
-    res.write(`data: ${JSON.stringify(chunk)}\n\n`);
+    writeChunk({ role: "assistant" }, null);
+    writeChunk({ content: "Verbindung unterbrochen." }, null);
+    writeChunk({}, "stop");
     res.write("data: [DONE]\n\n");
     return res.end();
   }

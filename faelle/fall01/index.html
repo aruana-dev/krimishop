@@ -490,9 +490,9 @@ function boot(){initTL();initEV();initSV();initSBS();}
 let voiceMode='text';
 let humeWs=null;
 let humeToken=null;
-let audioCtx=null;
+let playbackCtx=null;
 let mediaStream=null;
-let audioWorklet=null;
+let recorder=null;
 let voiceConnected=false;
 let audioQueue=[];
 let isPlaying=false;
@@ -508,7 +508,7 @@ function setMode(mode){
   document.getElementById('voice-ui').classList.toggle('on',mode==='voice');
   document.getElementById('cm').style.display=mode==='text'?'flex':'none';
   if(mode==='voice'&&cur) connectVoice();
-  if(mode==='text'&&humeWs) disconnectVoice();
+  if(mode==='text') disconnectVoice();
 }
 
 async function getHumeToken(){
@@ -519,6 +519,13 @@ async function getHumeToken(){
   humeToken=d.accessToken;
   setTimeout(()=>{humeToken=null;},25*60*1000);
   return humeToken;
+}
+
+// Detect best supported audio MIME type for MediaRecorder
+function getMimeType(){
+  const types=['audio/webm','audio/mp4','audio/wav'];
+  for(const t of types){if(MediaRecorder.isTypeSupported(t)) return t;}
+  return '';
 }
 
 async function connectVoice(){
@@ -533,22 +540,28 @@ async function connectVoice(){
     const token=await getHumeToken();
     const params=new URLSearchParams({access_token:token});
     if(HUME_CONFIG_ID) params.set('config_id',HUME_CONFIG_ID);
-    params.set('custom_session_id',cur.name);
-    humeWs=new WebSocket(`wss://api.hume.ai/v0/evi/chat?${params}`);
+    // Connect to Hume EVI WebSocket
+    humeWs=new WebSocket(`wss://api.hume.ai/v0/evi?${params}`);
     humeWs.onopen=()=>{
       voiceConnected=true;
+      // Send session_settings with custom_session_id (suspect name for CLM)
+      humeWs.send(JSON.stringify({
+        type:'session_settings',
+        custom_session_id:cur.name
+      }));
       document.getElementById('voice-status').textContent='Drücke zum Sprechen';
       document.getElementById('voice-btn').style.opacity='1';
     };
     humeWs.onmessage=(e)=>{
-      const msg=JSON.parse(e.data);
-      handleHumeMessage(msg);
+      try{const msg=JSON.parse(e.data);handleHumeMessage(msg);}catch{}
     };
-    humeWs.onerror=()=>{
+    humeWs.onerror=(e)=>{
+      console.error('Hume WS error:',e);
       document.getElementById('voice-status').textContent='Verbindungsfehler';
       voiceConnected=false;
     };
-    humeWs.onclose=()=>{
+    humeWs.onclose=(e)=>{
+      console.log('Hume WS closed:',e.code,e.reason);
       voiceConnected=false;
       document.getElementById('voice-status').textContent='Getrennt';
       document.getElementById('voice-btn').className='voice-btn';
@@ -559,8 +572,9 @@ async function connectVoice(){
 }
 
 function disconnectVoice(){
+  if(recorder&&recorder.state!=='inactive'){recorder.stop();recorder=null;}
+  if(mediaStream){mediaStream.getTracks().forEach(t=>t.stop());mediaStream=null;}
   if(humeWs){humeWs.close();humeWs=null;}
-  stopMic();
   voiceConnected=false;
   audioQueue=[];
   isPlaying=false;
@@ -573,19 +587,20 @@ function handleHumeMessage(msg){
 
   switch(msg.type){
     case 'chat_metadata':
+      console.log('Hume chat started:',msg.chat_id);
       break;
     case 'user_message':
       if(msg.message?.content){
         transcript.textContent='Du: '+msg.message.content;
         const now=new Date().toLocaleTimeString('de-CH',{hour:'2-digit',minute:'2-digit'});
-        hist[cur.name].push({role:'user',c:msg.message.content,ts:now});
+        if(cur&&hist[cur.name]) hist[cur.name].push({role:'user',c:msg.message.content,ts:now});
       }
       break;
     case 'assistant_message':
       if(msg.message?.content){
         transcript.textContent=cur.name.split(' ')[0]+': '+msg.message.content;
         const now2=new Date().toLocaleTimeString('de-CH',{hour:'2-digit',minute:'2-digit'});
-        hist[cur.name].push({role:'ai',c:msg.message.content,ts:now2});
+        if(cur&&hist[cur.name]) hist[cur.name].push({role:'ai',c:msg.message.content,ts:now2});
       }
       status.textContent='Spricht...';
       btn.className='voice-btn speaking';
@@ -594,14 +609,15 @@ function handleHumeMessage(msg){
       if(msg.data) playAudioChunk(msg.data);
       break;
     case 'assistant_end':
-      status.textContent='Drücke zum Sprechen';
-      btn.className='voice-btn';
+      status.textContent=recording?'Spreche jetzt...':'Drücke zum Sprechen';
+      btn.className=recording?'voice-btn recording':'voice-btn';
       break;
     case 'user_interruption':
       audioQueue=[];
       isPlaying=false;
       break;
     case 'error':
+      console.error('Hume error:',msg);
       status.textContent='Fehler: '+(msg.message||'Unbekannt');
       break;
   }
@@ -628,40 +644,29 @@ async function toggleVoice(){
 }
 
 async function startMic(){
-  if(!audioCtx) audioCtx=new AudioContext({sampleRate:16000});
-  if(audioCtx.state==='suspended') await audioCtx.resume();
-
-  mediaStream=await navigator.mediaDevices.getUserMedia({audio:{sampleRate:16000,channelCount:1,echoCancellation:true}});
-  const source=audioCtx.createMediaStreamSource(mediaStream);
-
-  // Use ScriptProcessor (widely supported) to capture PCM
-  const processor=audioCtx.createScriptProcessor(4096,1,1);
-  processor.onaudioprocess=(e)=>{
-    if(!recording||!humeWs||humeWs.readyState!==1) return;
-    const float32=e.inputBuffer.getChannelData(0);
-    const int16=new Int16Array(float32.length);
-    for(let i=0;i<float32.length;i++){
-      const s=Math.max(-1,Math.min(1,float32[i]));
-      int16[i]=s<0?s*0x8000:s*0x7FFF;
+  mediaStream=await navigator.mediaDevices.getUserMedia({
+    audio:{echoCancellation:true,noiseSuppression:true,autoGainControl:true}
+  });
+  const mimeType=getMimeType();
+  const options=mimeType?{mimeType}:{};
+  recorder=new MediaRecorder(mediaStream,options);
+  recorder.ondataavailable=(e)=>{
+    if(e.data.size>0&&humeWs&&humeWs.readyState===1){
+      const reader=new FileReader();
+      reader.onloadend=()=>{
+        const b64=reader.result.split(',')[1];
+        if(b64) humeWs.send(JSON.stringify({type:'audio_input',data:b64}));
+      };
+      reader.readAsDataURL(e.data);
     }
-    const b64=arrayBufferToBase64(int16.buffer);
-    humeWs.send(JSON.stringify({type:'audio_input',data:b64}));
   };
-  source.connect(processor);
-  processor.connect(audioCtx.destination);
-  audioWorklet=processor;
+  // Send 100ms chunks (recommended for web)
+  recorder.start(100);
 }
 
 function stopMic(){
+  if(recorder&&recorder.state!=='inactive'){recorder.stop();recorder=null;}
   if(mediaStream){mediaStream.getTracks().forEach(t=>t.stop());mediaStream=null;}
-  if(audioWorklet){audioWorklet.disconnect();audioWorklet=null;}
-}
-
-function arrayBufferToBase64(buf){
-  const bytes=new Uint8Array(buf);
-  let binary='';
-  for(let i=0;i<bytes.byteLength;i++) binary+=String.fromCharCode(bytes[i]);
-  return btoa(binary);
 }
 
 function base64ToArrayBuffer(b64){
@@ -681,15 +686,16 @@ async function playNext(){
   isPlaying=true;
   const b64=audioQueue.shift();
   try{
-    if(!audioCtx) audioCtx=new AudioContext({sampleRate:48000});
+    if(!playbackCtx) playbackCtx=new AudioContext();
     const buf=base64ToArrayBuffer(b64);
-    const audioBuf=await audioCtx.decodeAudioData(buf);
-    const source=audioCtx.createBufferSource();
+    const audioBuf=await playbackCtx.decodeAudioData(buf);
+    const source=playbackCtx.createBufferSource();
     source.buffer=audioBuf;
-    source.connect(audioCtx.destination);
+    source.connect(playbackCtx.destination);
     source.onended=()=>playNext();
     source.start();
-  }catch{
+  }catch(err){
+    console.error('Audio playback error:',err);
     playNext();
   }
 }
