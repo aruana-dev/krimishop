@@ -113,22 +113,6 @@ nav button.active{color:var(--gold);}
 .cinput:focus{border-color:var(--gold);}
 .csend{background:var(--red);border:none;color:white;padding:.7rem 1.1rem;cursor:pointer;font-family:'Oswald',sans-serif;font-size:.75rem;letter-spacing:.1em;text-transform:uppercase;transition:background .2s;}
 .csend:hover{background:#a50d26;}
-/* VOICE MODE */
-.mode-toggle{display:flex;gap:0;margin-bottom:1rem;}
-.mode-btn{flex:1;padding:.55rem;background:var(--card);border:1px solid var(--border);color:var(--muted);cursor:pointer;font-family:'Oswald',sans-serif;font-size:.72rem;letter-spacing:.12em;text-transform:uppercase;transition:all .15s;}
-.mode-btn:first-child{border-right:none;}
-.mode-btn.on{background:var(--faint);color:var(--gold);border-color:var(--gold);}
-.voice-ui{display:none;flex-direction:column;align-items:center;justify-content:center;gap:1.4rem;padding:2rem;flex:1;}
-.voice-ui.on{display:flex;}
-.voice-btn{width:100px;height:100px;border-radius:50%;border:3px solid var(--border);background:var(--card);color:var(--muted);cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .3s;font-size:2rem;}
-.voice-btn:hover{border-color:var(--gold);color:var(--text);}
-.voice-btn.recording{border-color:var(--red);background:rgba(200,16,46,.15);color:var(--red);animation:pulse 1.5s infinite;}
-.voice-btn.speaking{border-color:var(--gold);background:rgba(201,168,76,.15);color:var(--gold);}
-.voice-btn.live{border-color:var(--gold);background:rgba(201,168,76,.1);color:var(--gold);animation:pulse 2s infinite;}
-@keyframes pulse{0%,100%{box-shadow:0 0 0 0 rgba(200,16,46,.3)}50%{box-shadow:0 0 0 18px rgba(200,16,46,0)}}
-.voice-status{font-family:'Oswald',sans-serif;font-size:.78rem;letter-spacing:.15em;text-transform:uppercase;color:var(--muted);}
-.voice-transcript{font-size:.85rem;color:var(--muted);font-style:italic;text-align:center;max-width:400px;min-height:1.5rem;}
-.voice-note{font-size:.7rem;color:var(--faint);margin-top:.5rem;text-align:center;}
 /* MODAL */
 .moverlay{position:fixed;inset:0;background:rgba(0,0,0,.82);z-index:500;display:none;align-items:center;justify-content:center;padding:1rem;}
 .moverlay.on{display:flex;}
@@ -238,10 +222,6 @@ nav button.active{color:var(--gold);}
     <div class="sec-label">Interaktives Verhör</div>
     <div class="sec-title">Befragt die Verdächtigen</div>
     <div class="notice">Die Verdächtigen antworten gemäss ihren bekannten Aussagen. Stellt gezielte Fragen — achtet auf Widersprüche.</div>
-    <div class="mode-toggle">
-      <button class="mode-btn on" onclick="setMode('text')">Text-Verhör</button>
-      <button class="mode-btn" onclick="setMode('voice')">Sprach-Verhör</button>
-    </div>
     <div class="chatgrid">
       <div class="chatside">
         <div class="cstitle">Verdächtige</div>
@@ -253,13 +233,6 @@ nav button.active{color:var(--gold);}
           <div><div class="cname" id="cn">Wähle einen Verdächtigen</div><div class="cstatus">● Bereit</div></div>
         </div>
         <div class="chatmsgs" id="cm"><div style="text-align:center;color:var(--muted);font-style:italic;font-size:.88rem;padding:2rem;">Wähle links einen Verdächtigen.</div></div>
-        <div class="voice-ui" id="voice-ui">
-          <div class="voice-status" id="voice-status">Select a suspect, then tap Start</div>
-          <iframe id="pp-frame" style="display:none;width:100%;height:500px;border:1px solid var(--border);border-radius:4px;background:var(--card);" allow="microphone"></iframe>
-          <button class="voice-btn" id="voice-btn" onclick="startPP()">&#9654;</button>
-          <div class="voice-transcript" id="voice-transcript"></div>
-          <div class="voice-note">Full-duplex — speak freely, interrupt anytime (English only)</div>
-        </div>
         <div class="chatinput" id="text-input">
           <textarea class="cinput" id="inp" rows="1" placeholder="Deine Frage…" onkeydown="ck(event)"></textarea>
           <button class="csend" onclick="send()">Fragen</button>
@@ -411,13 +384,7 @@ function selS(i){
   if(!hist[cur.name]) hist[cur.name]=[];
   renderMsgs();
   document.getElementById('inp').placeholder=`Frage an ${cur.name.split(' ')[0]}…`;
-  if(voiceMode==='text') document.getElementById('inp').focus();
-  if(voiceMode==='voice'){
-    document.getElementById('voice-transcript').textContent='';
-    document.getElementById('pp-frame').src='';
-    document.getElementById('pp-frame').style.display='none';
-    document.getElementById('voice-btn').style.display='';
-  }
+  document.getElementById('inp').focus();
 }
 
 function esc(s){const d=document.createElement('div');d.textContent=s;return d.innerHTML;}
@@ -492,56 +459,6 @@ document.addEventListener('DOMContentLoaded',()=>{
 document.addEventListener('keydown',e=>{if(e.key==='Escape')cm2();});
 function boot(){initTL();initEV();initSV();initSBS();}
 
-// ── VOICE MODE (NVIDIA PersonaPlex via embedded UI) ──
-// PersonaPlex uses a complex Opus/Ogg WebSocket protocol with WASM workers.
-// We embed the official UI in an iframe with persona params via URL.
-
-let voiceMode='text';
-
-const PP_BASE=window.PERSONAPLEX_URL||'https://103.196.86.83:19386';
-
-const PP_PERSONAS={
-  "Sandra Keller":"You are Sandra Keller (48), estranged wife of Thomas Keller. You were at yoga from 7-8:30 PM. You admit the life insurance. You are under financial pressure. You know about some accounting matter Thomas mentioned in late September but have no details. Respond upset but controlled. Keep answers short, 2-3 sentences max, like a real police interrogation.",
-  "Marco Ferretti":"You are Marco Ferretti (45), business partner of Thomas Keller, responsible for bookkeeping. You claim you were at your sisters in Thun that evening, arrived around 8:30 PM. You say the books are clean. You only admitted WhatsApp contact after being confronted. Get nervous when asked about account 5000. Keep answers short, 2-3 sentences.",
-  "Lena Bauer":"You are Lena Bauer (29), fired assistant. You were at Restaurant Lorenzini from about 7:17 to 10:43 PM. You still have the shop key. You reluctantly admit you were near Kramgasse before and after dinner if asked. You had no motive for murder. Respond honest but hurt. Keep answers short, 2-3 sentences.",
-  "Roland Huber":"You are Roland Huber (61), retired banker and collector. You confronted Thomas loudly about a forged antique but did not attack him. You saw Marco Ferretti briefly on Kramgasse around 4:30 PM. You claim you were home in Muri from 5:30 PM. You had nothing to do with the murder. You wear Davidoff Cool Water. Respond dignified, annoyed. Keep answers short, 2-3 sentences.",
-};
-
-const PP_VOICES={
-  "Sandra Keller":"NATF1",
-  "Marco Ferretti":"NATM1",
-  "Lena Bauer":"NATF2",
-  "Roland Huber":"NATM3",
-};
-
-function setMode(mode){
-  voiceMode=mode;
-  document.querySelectorAll('.mode-btn').forEach((b,i)=>{
-    b.classList.toggle('on',i===(mode==='text'?0:1));
-  });
-  document.getElementById('text-input').style.display=mode==='text'?'flex':'none';
-  document.getElementById('voice-ui').classList.toggle('on',mode==='voice');
-  document.getElementById('cm').style.display=mode==='text'?'flex':'none';
-  if(mode==='text'){
-    document.getElementById('pp-frame').style.display='none';
-    document.getElementById('pp-frame').src='';
-  }
-}
-
-function startPP(){
-  if(!cur){alert('Select a suspect first.');return;}
-  const persona=PP_PERSONAS[cur.name]||'You are a suspect in a murder case.';
-  const voice=PP_VOICES[cur.name]||'NATM0';
-  // Build URL with persona params — the PersonaPlex UI reads these from URL
-  const url=new URL(PP_BASE);
-  url.searchParams.set('text_prompt',persona);
-  url.searchParams.set('voice_prompt',voice);
-  const frame=document.getElementById('pp-frame');
-  frame.src=url.toString();
-  frame.style.display='block';
-  document.getElementById('voice-status').textContent=cur.name+' — tap Start in the panel below, then speak English';
-  document.getElementById('voice-btn').style.display='none';
-}
 </script>
 </body>
 </html>
