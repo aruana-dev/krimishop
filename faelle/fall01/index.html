@@ -604,8 +604,8 @@ async function startCapture(){
   captureCtx=new AudioContext({sampleRate:24000});
   const source=captureCtx.createMediaStreamSource(mediaStream);
 
-  // ScriptProcessor to get PCM frames (960 samples = 40ms at 24kHz)
-  const processor=captureCtx.createScriptProcessor(960,1,1);
+  // ScriptProcessor: buffer must be power of 2. 1024 samples ≈ 42ms at 24kHz
+  const processor=captureCtx.createScriptProcessor(1024,1,1);
   processor.onaudioprocess=(e)=>{
     if(!recording||!ppWs||ppWs.readyState!==1) return;
     const pcm=e.inputBuffer.getChannelData(0);
